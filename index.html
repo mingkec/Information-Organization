@@ -69,7 +69,9 @@ h1{font-size:20px;font-weight:700;margin:0;letter-spacing:.02em}
 /* 工具列 */
 .bar{padding:12px 16px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .facts{flex:1 1 100%;display:flex;gap:18px;font-size:13px;color:var(--muted)}
+.facts{flex-wrap:wrap;row-gap:4px}
 .facts strong{color:var(--ink);font-weight:500;font-size:15px;margin-left:4px}
+.facts strong.up{color:var(--up)} .facts strong.down{color:var(--down)}
 .search{
   flex:1 1 140px; min-width:0; height:36px; padding:0 12px;
   border:1px solid var(--line); border-radius:9px; background:var(--surface);
@@ -111,7 +113,10 @@ td:first-child{min-width:112px}
 td.tp{cursor:pointer}
 td.tp .add{color:var(--muted);font-size:13px}
 td.heat{position:relative}
-td.heat small{display:block;font-size:11px;line-height:1.1}
+td small{display:block;font-size:11px;line-height:1.1}
+.sortbar{flex:1 1 100%;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.sortbar select{flex:0 1 auto;min-width:0;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font-size:14px}
+.sortbar button{height:34px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer;font-size:14px}
 .empty{padding:40px 24px;text-align:left;max-width:34em;color:var(--muted)}
 .empty h2{color:var(--ink);font-size:17px;margin:0 0 8px}
 .empty ol{padding-left:1.2em}
@@ -189,6 +194,11 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
     <button id="m-pct" aria-pressed="false">漲跌幅</button>
   </div>
   <button class="icon-btn" id="reload" aria-label="重新載入資料" title="重新載入資料">↻</button>
+  <div class="sortbar">
+    <label for="sortKey">排序</label>
+    <select id="sortKey"></select>
+    <button id="sortDir" aria-label="切換排序方向"></button>
+  </div>
 </div>
 <p class="note" id="note"></p>
 
@@ -274,8 +284,11 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
         const p = s.history?.[n]?.close ?? null;
         hist[n] = {close:p, chg: p && close ? close / p - 1 : null};
       }
+      const g = s.tgt || {};
       return {
         code:h.code, name:h.name, weight:h.weight, close, pe:s.pe ?? null,
+        tMean:g.mean ?? null, tMed:g.median ?? null, tLow:g.low ?? null, tHigh:g.high ?? null, tN:g.n ?? null,
+        tUp: g.mean && close ? g.mean / close - 1 : null,
         tp, upside: tp && close ? tp / close - 1 : null, hist, stale:!!s.stale
       };
     });
@@ -289,6 +302,7 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
 
   function render(){
     const e = data.etfs[etf];
+    syncSortUI();
     let rows = rowsFor(etf);
     if (q) rows = rows.filter(r => r.name.includes(q) || r.code.includes(q));
     rows.sort((a, b) => {
@@ -304,9 +318,13 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
     let w = 0, sumEarn = 0;
     for (const r of all) if (r.pe > 0 && r.weight) { w += r.weight; sumEarn += r.weight / r.pe; }
     const wpe = sumEarn ? w / sumEarn : null;
+    let wu = 0, su = 0;
+    for (const r of all) if (r.tUp != null && r.weight) { wu += r.weight; su += r.weight * r.tUp; }
+    const wup = wu ? su / wu : null;
     $("#facts").innerHTML =
       `<span>成分股<strong>${e.holdings.length} 檔</strong></span>` +
-      `<span>加權本益比<strong>${num(wpe, 1)}</strong></span>`;
+      `<span>加權本益比<strong>${num(wpe, 1)}</strong></span>` +
+      `<span>法人目標空間<strong class="${dir(wup)}">${pct(wup)}</strong></span>`;
 
     const notes = [];
     if (e.source && /Basic0007\./i.test(e.source)) notes.push("目前只抓到前十大持股。可在 config.json 的 manual_holdings 填入完整名單。");
@@ -318,8 +336,12 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
       {key:"name", label:"個股"},
       {key:"close", label:"現價"},
       {key:"pe", label:"本益比"},
-      {key:"tp", label:"目標價", cls:"gap"},
-      {key:"upside", label:"上漲空間"},
+      {key:"tMean", label:"法人均價", cls:"gap"},
+      {key:"tMed", label:"中位數"},
+      {key:"tLow", label:"最低"},
+      {key:"tUp", label:"均價空間"},
+      {key:"tp", label:"我的目標價", cls:"gap"},
+      {key:"upside", label:"我的空間"},
       ...data.lookback.map((n, i) => ({key:"h"+n, label:`${n} 天前`, cls: i === 0 ? "gap" : ""}))
     ];
     const head = cols.map(c => {
@@ -338,6 +360,10 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
         <td><div class="nm">${esc(r.name)}</div><div class="cd">${esc(r.code)}${r.weight != null ? `<span class="wt">${num(r.weight, 2)}%</span>` : ""}</div></td>
         <td>${num(r.close)}</td>
         <td class="${r.pe ? "" : "dim"}">${r.pe ? num(r.pe, 1) : "—"}</td>
+        <td class="gap">${num(r.tMean)}${r.tN ? `<small class="dim">${r.tN} 位分析師</small>` : ""}</td>
+        <td>${num(r.tMed)}</td>
+        <td>${num(r.tLow)}${r.tHigh ? `<small class="dim">最高 ${num(r.tHigh)}</small>` : ""}</td>
+        <td class="${dir(r.tUp)}">${pct(r.tUp)}</td>
         <td class="tp gap" data-code="${esc(r.code)}" data-name="${esc(r.name)}" tabindex="0" aria-label="設定${esc(r.name)}目標價">${r.tp ? num(r.tp) : '<span class="add">＋ 填入</span>'}</td>
         <td class="${dir(r.upside)}">${pct(r.upside)}</td>
         ${hist}
@@ -351,9 +377,27 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
     }
     $("#scroller").innerHTML = rows.length
       ? `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
-         <p class="src">股價、本益比資料來源：臺灣證券交易所、證券櫃檯買賣中心。成分股：MoneyDJ。僅供參考，不構成投資建議。</p>`
+         <p class="src">股價、本益比資料來源：臺灣證券交易所、證券櫃檯買賣中心。法人目標價：Yahoo 財經分析師共識。成分股：MoneyDJ。僅供參考，不構成投資建議。</p>`
       : `<div class="empty">找不到符合「${esc(q)}」的個股。</div>`;
   }
+
+  const SORTS = () => [
+    ["weight","持股權重"],["name","代號"],["close","現價"],["pe","本益比"],
+    ["tMean","法人均價"],["tMed","法人中位數"],["tLow","法人最低"],["tUp","法人均價空間"],
+    ["tp","我的目標價"],["upside","我的空間"],
+    ...data.lookback.map(n => ["h"+n, `${n} 天前起漲跌`])
+  ];
+  const defaultDir = k => (k === "name" || k === "pe") ? 1 : -1;
+  function syncSortUI(){
+    const sel = $("#sortKey");
+    if (sel.options.length !== SORTS().length)
+      sel.innerHTML = SORTS().map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+    sel.value = sort.key;
+    $("#sortDir").textContent = sort.dir < 0 ? "大到小 ↓" : "小到大 ↑";
+  }
+  function setSort(next){ sort = next; store.set("sort", sort); render(); }
+  $("#sortKey").addEventListener("change", ev => setSort({key:ev.target.value, dir:defaultDir(ev.target.value)}));
+  $("#sortDir").addEventListener("click", () => setSort({key:sort.key, dir:-sort.dir}));
 
   function renderTabs(){
     $("#tabs").innerHTML = Object.entries(data.etfs).map(([c, e]) =>
@@ -390,8 +434,7 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
     const th = ev.target.closest("th[data-key]");
     if (th) {
       const k = th.dataset.key;
-      sort = sort.key === k ? {key:k, dir:-sort.dir} : {key:k, dir: k === "name" || k === "pe" ? 1 : -1};
-      store.set("sort", sort); render(); return;
+      setSort(sort.key === k ? {key:k, dir:-sort.dir} : {key:k, dir:defaultDir(k)}); return;
     }
     const tp = ev.target.closest("td.tp"); if (tp) editTarget(tp);
   });

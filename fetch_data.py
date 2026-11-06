@@ -4,6 +4,7 @@
 - 股價：臺灣證券交易所「每日收盤行情」、證券櫃檯買賣中心「上櫃股票每日收盤行情」，逐日抓全市場
 - 本益比：證交所、櫃買中心 OpenAPI（政府資料開放授權條款）
 - 成分股：MoneyDJ ETF 持股頁（抓不到時改用 config.json 的 manual_holdings）
+- 法人目標價：Yahoo 財經的分析師共識（平均、中位數、最低、最高、人數），透過 yfinance 套件
 
 歷史股價會存在 prices_cache.json（由 GitHub Actions 快取保存，不進專案），
 所以第一次要回補約 60 個交易日（5～8 分鐘），之後每天只抓當天。
@@ -309,6 +310,48 @@ def pe_table():
     return out
 
 
+# ---------- 法人目標價 ----------
+
+def analyst_targets(symbols, old_stocks):
+    """symbols: {代號: Yahoo 代碼（2330.TW / 3529.TWO）}。抓不到的沿用上次的數字。"""
+    out = {}
+    if CONFIG.get("analyst_targets", True):
+        try:
+            import yfinance as yf
+        except ImportError:
+            log("! 沒有安裝 yfinance，略過法人目標價")
+            yf = None
+        fails = 0
+        for i, (code, sym) in enumerate(symbols.items(), 1):
+            if yf is None:
+                break
+            try:
+                info = yf.Ticker(sym).info or {}
+                t = {"mean": to_num(info.get("targetMeanPrice")),
+                     "median": to_num(info.get("targetMedianPrice")),
+                     "low": to_num(info.get("targetLowPrice")),
+                     "high": to_num(info.get("targetHighPrice")),
+                     "n": info.get("numberOfAnalystOpinions")}
+                if any(t[k] for k in ("mean", "median", "low", "high")):
+                    t["date"] = TODAY.isoformat()
+                    out[code] = t
+                fails = 0
+            except Exception as e:  # noqa: BLE001
+                fails += 1
+                log(f"  ! 目標價 {sym}：{e}")
+                if fails >= 5:
+                    log("  ! 連續失敗 5 次，可能被 Yahoo 限流，其餘沿用上次的數字")
+                    break
+            if i % 20 == 0:
+                log(f"目標價 {i}/{len(symbols)}")
+            time.sleep(1.2)
+        log(f"法人目標價：{len(out)} 檔有資料")
+    for code in symbols:
+        if code not in out and (old_stocks.get(code) or {}).get("tgt"):
+            out[code] = old_stocks[code]["tgt"]
+    return out
+
+
 # ---------- 主程式 ----------
 
 def main():
@@ -347,13 +390,17 @@ def main():
         etfs[etf] = {"name": etf_name, "holdings": rows, "source": source}
 
     pes = pe_table()
+    codes = sorted({h["code"] for e in etfs.values() for h in e["holdings"]})
+    latest_tpex = cache[days[0]].get("tpex", {})
+    targets = analyst_targets({c: f"{c}.TWO" if c in latest_tpex else f"{c}.TW" for c in codes},
+                              old.get("stocks", {}))
 
     def close_on(code, key):
         e = cache[key]
         return e.get("twse", {}).get(code) or e.get("tpex", {}).get(code)
 
     stocks = {}
-    for code in sorted({h["code"] for e in etfs.values() for h in e["holdings"]}):
+    for code in codes:
         # 最新收盤：最近一個有成交的交易日（停牌時往前找）
         start = next((i for i, k in enumerate(days) if close_on(code, k)), None)
         if start is None:
@@ -369,7 +416,8 @@ def main():
         p = pes.get(code, {})
         stocks[code] = {"date": series[0], "close": close_on(code, series[0]),
                         "pe": p.get("pe"), "pb": p.get("pb"), "dy": p.get("dy"),
-                        "history": history, **({"stale": True} if start > 0 else {})}
+                        "history": history, "tgt": targets.get(code),
+                        **({"stale": True} if start > 0 else {})}
 
     out = {
         "updated_at": NOW.isoformat(timespec="minutes"),
