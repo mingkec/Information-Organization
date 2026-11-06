@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETF看板">
+<meta name="theme-color" content="#1A2B5E">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<title>ETF 成分股看板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2F4F8; --surface:#FFFFFF; --ink:#16202C; --muted:#677284; --line:#DCE1E8;
+  --band:#1A2B5E; --band-ink:#FFFFFF; --band-muted:#AEB9D9;
+  --up:#D0313D; --down:#11834A; --focus:#3B63E0;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D131A; --surface:#151D26; --ink:#E6EBF1; --muted:#8C98A8; --line:#25303C;
+    --band:#14204A; --band-ink:#F2F5FF; --band-muted:#8E9CC8;
+    --up:#FF5A66; --down:#33C27A; --focus:#8FA8FF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D131A; --surface:#151D26; --ink:#E6EBF1; --muted:#8C98A8; --line:#25303C;
+  --band:#14204A; --band-ink:#F2F5FF; --band-muted:#8E9CC8;
+  --up:#FF5A66; --down:#33C27A; --focus:#8FA8FF;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.45 "Noto Sans TC","PingFang TC","Heiti TC",system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+  display:flex; flex-direction:column;
+  -webkit-text-size-adjust:100%;
+}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* 上方色帶 */
+.band{
+  background:var(--band); color:var(--band-ink);
+  padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 0;
+}
+.title-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-size:20px;font-weight:700;margin:0;letter-spacing:.02em}
+.stamp{font-size:12px;color:var(--band-muted);white-space:nowrap}
+.etf-tabs{display:flex;gap:4px;margin-top:14px;overflow-x:auto;scrollbar-width:none}
+.etf-tabs::-webkit-scrollbar{display:none}
+.etf-tab{
+  flex:0 0 auto; border:0; background:transparent; cursor:pointer;
+  padding:8px 14px 10px; border-radius:10px 10px 0 0;
+  color:var(--band-muted); text-align:left; line-height:1.2;
+}
+.etf-tab b{display:block;font-size:17px;font-weight:700}
+.etf-tab span{font-size:11px}
+.etf-tab[aria-selected="true"]{background:var(--bg);color:var(--ink)}
+.etf-tab[aria-selected="true"] span{color:var(--muted)}
+
+/* 工具列 */
+.bar{padding:12px 16px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.facts{flex:1 1 100%;display:flex;gap:18px;font-size:13px;color:var(--muted)}
+.facts strong{color:var(--ink);font-weight:500;font-size:15px;margin-left:4px}
+.search{
+  flex:1 1 140px; min-width:0; height:36px; padding:0 12px;
+  border:1px solid var(--line); border-radius:9px; background:var(--surface);
+}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:0 12px;height:34px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.icon-btn{height:36px;width:36px;border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer}
+.note{margin:0 16px 10px;font-size:13px;color:var(--muted)}
+.note:empty{display:none}
+
+/* 表格 */
+.scroller{
+  flex:1; overflow:auto; -webkit-overflow-scrolling:touch;
+  background:var(--surface); border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+table{border-collapse:separate;border-spacing:0;min-width:100%}
+th,td{padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+thead th{
+  position:sticky; top:0; z-index:2; background:var(--surface);
+  font-size:12px; font-weight:500; color:var(--muted); cursor:pointer; user-select:none;
+}
+thead th[aria-sort]{color:var(--ink)}
+thead th[aria-sort="descending"]::after{content:" ↓"}
+thead th[aria-sort="ascending"]::after{content:" ↑"}
+th:first-child,td:first-child{
+  position:sticky; left:0; z-index:1; background:var(--surface);
+  text-align:left; border-right:1px solid var(--line);
+}
+thead th:first-child{z-index:3}
+td:first-child{min-width:112px}
+.nm{font-weight:500}
+.cd{font-size:12px;color:var(--muted)}
+.wt{margin-left:8px}
+.gap{border-left:1px solid var(--line)}
+.dim{color:var(--muted)}
+.up{color:var(--up)} .down{color:var(--down)}
+td.tp{cursor:pointer}
+td.tp .add{color:var(--muted);font-size:13px}
+td.heat{position:relative}
+td.heat small{display:block;font-size:11px;line-height:1.1}
+.empty{padding:40px 24px;text-align:left;max-width:34em;color:var(--muted)}
+.empty h2{color:var(--ink);font-size:17px;margin:0 0 8px}
+.empty ol{padding-left:1.2em}
+.src{margin:0;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 16px);font-size:12px;color:var(--muted)}
+.etf-tab.add{color:var(--band-ink);font-size:22px;padding:6px 16px 10px;opacity:.8}
+.etf-tab.add[aria-selected="true"]{opacity:1}
+dialog.sheet{
+  border:0; padding:0; width:min(100%,480px); max-width:100%; max-height:88dvh; margin:auto auto 0;
+  border-radius:16px 16px 0 0; background:var(--surface); color:var(--ink);
+}
+@media (min-width:600px){ dialog.sheet{margin:auto;border-radius:16px} }
+dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
+.sheet-inner{padding:18px 18px calc(env(safe-area-inset-bottom,0px) + 18px);overflow:auto;max-height:88dvh}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sheet h2{font-size:18px;margin:0}
+.sheet h3{font-size:14px;font-weight:500;color:var(--muted);margin:20px 0 8px}
+.txt-btn{border:0;background:transparent;color:var(--focus);cursor:pointer;padding:6px 0;font-size:15px}
+.etf-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:11px}
+.etf-list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.etf-list li:last-child{border-bottom:0}
+.etf-list b{min-width:4.2em}
+.etf-list span{flex:1;color:var(--muted);font-size:14px}
+.etf-list .rm{color:var(--up)}
+.row{display:flex;gap:8px}
+.field{
+  flex:1; min-width:0; height:42px; padding:0 12px; font-size:16px;
+  border:1px solid var(--line); border-radius:10px; background:var(--bg);
+}
+.solid{height:42px;padding:0 16px;border:0;border-radius:10px;background:var(--ink);color:var(--surface);cursor:pointer;font-weight:500}
+.solid:disabled{opacity:.5}
+.hint{font-size:13px;color:var(--muted);margin:8px 0 0}
+.status{font-size:14px;margin:12px 0 0;min-height:1.4em}
+.status.bad{color:var(--up)}
+.lock-btn{border:0;background:transparent;color:var(--band-muted);font-size:12px;padding:4px 0 4px 10px;cursor:pointer}
+
+/* 密碼畫面 */
+.lock{
+  position:fixed; inset:0; z-index:20; background:var(--band); color:var(--band-ink);
+  display:flex; align-items:center; justify-content:center;
+  padding:calc(env(safe-area-inset-top,0px) + 24px) 28px calc(env(safe-area-inset-bottom,0px) + 24px);
+}
+.lock[hidden]{display:none}
+.lock form{width:100%;max-width:320px}
+.lock h2{font-size:24px;font-weight:700;margin:0 0 4px}
+.lock p{margin:0 0 22px;color:var(--band-muted);font-size:14px}
+.lock input[type=password]{
+  width:100%; height:48px; padding:0 14px; font-size:17px;
+  border:1px solid transparent; border-radius:11px; background:#fff; color:#16202C;
+}
+.lock input[aria-invalid=true]{border-color:#FF5A66}
+.lock label{display:flex;align-items:center;gap:8px;margin:14px 0 18px;font-size:14px;color:var(--band-muted)}
+.lock input[type=checkbox]{width:18px;height:18px;accent-color:#fff}
+.lock button{
+  width:100%; height:48px; border:0; border-radius:11px; cursor:pointer;
+  background:#fff; color:#1A2B5E; font-size:16px; font-weight:700;
+}
+.lock button:disabled{opacity:.6}
+.lock .err{min-height:1.4em;margin:10px 0 0;color:#FFB3B9;font-size:14px}
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="title-row">
+    <h1>ETF 成分股看板</h1>
+    <span class="stamp"><span id="stamp"></span><button class="lock-btn" id="lockNow" hidden>鎖定</button></span>
+  </div>
+  <nav class="etf-tabs" id="tabs" role="tablist" aria-label="選擇 ETF"></nav>
+</header>
+
+<div class="bar">
+  <div class="facts" id="facts"></div>
+  <input class="search" id="q" type="search" placeholder="搜尋名稱或代號" aria-label="搜尋名稱或代號">
+  <div class="seg" role="group" aria-label="歷史欄位顯示方式">
+    <button id="m-price" aria-pressed="true">股價</button>
+    <button id="m-pct" aria-pressed="false">漲跌幅</button>
+  </div>
+  <button class="icon-btn" id="reload" aria-label="重新載入資料" title="重新載入資料">↻</button>
+</div>
+<p class="note" id="note"></p>
+
+<main class="scroller" id="scroller"><div class="empty">載入中…</div></main>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheetTitle">
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="sheetTitle">管理 ETF</h2><button class="txt-btn" id="sheetClose">完成</button></div>
+
+    <div id="manage">
+      <ul class="etf-list" id="etfList"></ul>
+      <h3>新增 ETF</h3>
+      <div class="row">
+        <input class="field" id="newCode" inputmode="text" autocapitalize="characters" placeholder="代號，例如 00919" aria-label="ETF 代號">
+        <button class="solid" id="addBtn">加入</button>
+      </div>
+      <p class="hint">加入或移除後會自動更新資料，約 2～5 分鐘完成。</p>
+      <p class="status" id="status" role="status"></p>
+      <h3>GitHub 連線</h3>
+      <p class="hint" id="ghInfo"></p>
+      <button class="txt-btn" id="ghEdit">變更連線設定</button>
+    </div>
+
+    <form id="ghForm" hidden>
+      <p class="hint" style="margin-top:0">第一次使用要連上你的 GitHub 專案，app 才能修改 ETF 清單。權杖會加密後只存在這台裝置。</p>
+      <h3>專案</h3>
+      <input class="field" id="ghRepo" placeholder="帳號/專案名稱" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="GitHub 專案" required style="width:100%">
+      <h3>權杖（Personal access token）</h3>
+      <input class="field" id="ghToken" type="password" placeholder="github_pat_..." autocomplete="off" aria-label="GitHub 權杖" required style="width:100%">
+      <p class="hint">建立方式見 README 的「在 app 裡管理 ETF」。</p>
+      <div class="row" style="margin-top:16px"><button class="solid" type="submit" id="ghSave">儲存並測試</button><button class="txt-btn" type="button" id="ghCancel" style="padding:0 12px">取消</button></div>
+      <p class="status" id="ghStatus" role="status"></p>
+    </form>
+  </div>
+</dialog>
+
+<section class="lock" id="lock" hidden>
+  <form id="lockForm" autocomplete="on">
+    <h2>ETF 成分股看板</h2>
+    <p>輸入密碼解鎖</p>
+    <input type="text" name="username" value="etf-board" autocomplete="username" hidden>
+    <input type="password" id="pw" name="password" autocomplete="current-password" placeholder="密碼" aria-label="密碼" required>
+    <label><input type="checkbox" id="remember" checked> 在這台裝置記住</label>
+    <button id="unlock" type="submit">解鎖</button>
+    <p class="err" id="err" role="alert"></p>
+  </form>
+</section>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const num = (v, d = 2) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("zh-TW", {maximumFractionDigits:d, minimumFractionDigits: d === 1 ? 1 : 0});
+  const pct = v => v == null || isNaN(v) ? "—" : (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+  const dir = v => v == null || v === 0 ? "" : v > 0 ? "up" : "down";
+
+  let data = null;
+  let etf = store.get("etf", null);
+  let mode = store.get("mode", "price");
+  let sort = store.get("sort", {key:"weight", dir:-1});
+  let q = "";
+  let targets = store.get("targets", {});
+
+  function heat(chg){
+    if (chg == null) return "";
+    const a = Math.round(Math.min(Math.abs(chg) / 0.12, 1) * 40 + 6);
+    const c = chg >= 0 ? "var(--up)" : "var(--down)";
+    return `background:color-mix(in srgb, ${c} ${a}%, transparent)`;
+  }
+
+  function rowsFor(code){
+    const e = data.etfs[code];
+    return e.holdings.map(h => {
+      const s = data.stocks[h.code] || {};
+      const close = s.close ?? null;
+      const tp = targets[h.code] ?? null;
+      const hist = {};
+      for (const n of data.lookback){
+        const p = s.history?.[n]?.close ?? null;
+        hist[n] = {close:p, chg: p && close ? close / p - 1 : null};
+      }
+      return {
+        code:h.code, name:h.name, weight:h.weight, close, pe:s.pe ?? null,
+        tp, upside: tp && close ? tp / close - 1 : null, hist, stale:!!s.stale
+      };
+    });
+  }
+
+  const sortVal = (r, key) => {
+    if (key === "name") return r.code;
+    if (key.startsWith("h")) return r.hist[key.slice(1)].chg;
+    return r[key];
+  };
+
+  function render(){
+    const e = data.etfs[etf];
+    let rows = rowsFor(etf);
+    if (q) rows = rows.filter(r => r.name.includes(q) || r.code.includes(q));
+    rows.sort((a, b) => {
+      const x = sortVal(a, sort.key), y = sortVal(b, sort.key);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+    });
+
+    // 加權本益比（排除虧損股）
+    const all = rowsFor(etf);
+    let w = 0, sumEarn = 0;
+    for (const r of all) if (r.pe > 0 && r.weight) { w += r.weight; sumEarn += r.weight / r.pe; }
+    const wpe = sumEarn ? w / sumEarn : null;
+    $("#facts").innerHTML =
+      `<span>成分股<strong>${e.holdings.length} 檔</strong></span>` +
+      `<span>加權本益比<strong>${num(wpe, 1)}</strong></span>`;
+
+    const notes = [];
+    if (e.source && /Basic0007\./i.test(e.source)) notes.push("目前只抓到前十大持股。可在 config.json 的 manual_holdings 填入完整名單。");
+    if (all.some(r => r.stale)) notes.push("部分個股今天沒抓到新資料，顯示的是上次的數字。");
+    if (job) notes.unshift(job.msg);
+    $("#note").textContent = notes.join(" ");
+
+    const cols = [
+      {key:"name", label:"個股"},
+      {key:"close", label:"現價"},
+      {key:"pe", label:"本益比"},
+      {key:"tp", label:"目標價", cls:"gap"},
+      {key:"upside", label:"上漲空間"},
+      ...data.lookback.map((n, i) => ({key:"h"+n, label:`${n} 天前`, cls: i === 0 ? "gap" : ""}))
+    ];
+    const head = cols.map(c => {
+      const s = sort.key === c.key ? ` aria-sort="${sort.dir < 0 ? "descending" : "ascending"}"` : "";
+      return `<th class="${c.cls||""}" data-key="${c.key}"${s} tabindex="0">${c.label}</th>`;
+    }).join("");
+
+    const body = rows.map(r => {
+      const hist = data.lookback.map((n, i) => {
+        const h = r.hist[n];
+        const main = mode === "pct" ? `<span class="${dir(h.chg)}">${pct(h.chg)}</span>` : num(h.close);
+        const sub = mode === "pct" ? `<small class="dim">${num(h.close)}</small>` : `<small class="${dir(h.chg)}">${pct(h.chg)}</small>`;
+        return `<td class="heat ${i === 0 ? "gap" : ""}" style="${heat(h.chg)}">${main}${h.close ? sub : ""}</td>`;
+      }).join("");
+      return `<tr>
+        <td><div class="nm">${esc(r.name)}</div><div class="cd">${esc(r.code)}${r.weight != null ? `<span class="wt">${num(r.weight, 2)}%</span>` : ""}</div></td>
+        <td>${num(r.close)}</td>
+        <td class="${r.pe ? "" : "dim"}">${r.pe ? num(r.pe, 1) : "—"}</td>
+        <td class="tp gap" data-code="${esc(r.code)}" data-name="${esc(r.name)}" tabindex="0" aria-label="設定${esc(r.name)}目標價">${r.tp ? num(r.tp) : '<span class="add">＋ 填入</span>'}</td>
+        <td class="${dir(r.upside)}">${pct(r.upside)}</td>
+        ${hist}
+      </tr>`;
+    }).join("");
+
+    if (!e.holdings.length) {
+      $("#scroller").innerHTML = `<div class="empty"><h2>沒有抓到 ${esc(etf)} 的持股</h2>
+        債券型、海外型 ETF 的持股不是台股個股，這個看板沒辦法顯示。如果是台股 ETF，可以在 config.json 的 manual_holdings 手動填入成分股。</div>`;
+      return;
+    }
+    $("#scroller").innerHTML = rows.length
+      ? `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+         <p class="src">股價、本益比資料來源：臺灣證券交易所、證券櫃檯買賣中心。成分股：MoneyDJ。僅供參考，不構成投資建議。</p>`
+      : `<div class="empty">找不到符合「${esc(q)}」的個股。</div>`;
+  }
+
+  function renderTabs(){
+    $("#tabs").innerHTML = Object.entries(data.etfs).map(([c, e]) =>
+      `<button class="etf-tab" role="tab" aria-selected="${c === etf}" data-etf="${c}"><b>${c}</b><span>${esc(e.name)}</span></button>`
+    ).join("") + `<button class="etf-tab add" id="openSheet" aria-label="管理 ETF">＋</button>`;
+  }
+
+  function setMode(m){
+    mode = m; store.set("mode", m);
+    $("#m-price").setAttribute("aria-pressed", m === "price");
+    $("#m-pct").setAttribute("aria-pressed", m === "pct");
+    render();
+  }
+
+  function editTarget(cell){
+    const code = cell.dataset.code;
+    const cur = targets[code] ?? "";
+    const v = prompt(`${cell.dataset.name}（${code}）目標價\n留空可清除`, cur);
+    if (v === null) return;
+    const n = parseFloat(v.replace(/,/g, ""));
+    if (v.trim() === "" || isNaN(n) || n <= 0) delete targets[code];
+    else targets[code] = n;
+    store.set("targets", targets);
+    render();
+  }
+
+  $("#tabs").addEventListener("click", ev => {
+    if (ev.target.closest("#openSheet")) { openSheet(); return; }
+    const b = ev.target.closest(".etf-tab"); if (!b) return;
+    etf = b.dataset.etf; store.set("etf", etf); renderTabs(); render();
+    $("#scroller").scrollTo(0, 0);
+  });
+  $("#scroller").addEventListener("click", ev => {
+    const th = ev.target.closest("th[data-key]");
+    if (th) {
+      const k = th.dataset.key;
+      sort = sort.key === k ? {key:k, dir:-sort.dir} : {key:k, dir: k === "name" || k === "pe" ? 1 : -1};
+      store.set("sort", sort); render(); return;
+    }
+    const tp = ev.target.closest("td.tp"); if (tp) editTarget(tp);
+  });
+  $("#scroller").addEventListener("keydown", ev => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const el = ev.target.closest("th[data-key], td.tp"); if (!el) return;
+    ev.preventDefault(); el.click();
+  });
+  $("#q").addEventListener("input", ev => { q = ev.target.value.trim(); render(); });
+  $("#m-price").addEventListener("click", () => setMode("price"));
+  $("#m-pct").addEventListener("click", () => setMode("pct"));
+  $("#reload").addEventListener("click", load);
+
+  // ---------- 解密 ----------
+  const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const toB64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+  const KEY_STORE = "unlockKey";
+
+  async function deriveKey(pw, env){
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+      {name:"PBKDF2", salt:fromB64(env.salt), iterations:env.iter, hash:"SHA-256"},
+      base, {name:"AES-GCM", length:256}, true, ["encrypt", "decrypt"]);
+  }
+  async function decrypt(key, env){
+    const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:fromB64(env.iv)}, key, fromB64(env.ct));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+  async function savedKey(env){
+    const k = store.get(KEY_STORE, null);
+    if (!k || k.salt !== env.salt) return null;
+    try { return await crypto.subtle.importKey("raw", fromB64(k.raw), "AES-GCM", false, ["encrypt", "decrypt"]); }
+    catch { return null; }
+  }
+
+  let envelope = null;
+  let memKey = null;  // 不勾記住時，這次開著的期間仍可按 ↻ 重新載入
+  function askPassword(msg = ""){
+    $("#lock").hidden = false;
+    $("#err").textContent = msg;
+    $("#pw").setAttribute("aria-invalid", msg ? "true" : "false");
+    setTimeout(() => $("#pw").focus(), 50);
+  }
+  $("#lockForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const btn = $("#unlock"); btn.disabled = true; btn.textContent = "解鎖中…";
+    try {
+      const key = await deriveKey($("#pw").value, envelope);
+      const d = await decrypt(key, envelope);
+      memKey = {salt:envelope.salt, key};
+      if ($("#remember").checked) store.set(KEY_STORE, {salt:envelope.salt, raw:toB64(await crypto.subtle.exportKey("raw", key))});
+      $("#pw").value = ""; $("#lock").hidden = true;
+      show(d);
+    } catch {
+      askPassword("密碼不正確，請再試一次。");
+      $("#pw").select();
+    } finally { btn.disabled = false; btn.textContent = "解鎖"; }
+  });
+  $("#lockNow").addEventListener("click", () => {
+    try { localStorage.removeItem(KEY_STORE); } catch {}
+    memKey = null;
+    if ($("#sheet").open) $("#sheet").close();
+    data = null; $("#scroller").innerHTML = ""; $("#tabs").innerHTML = ""; $("#facts").innerHTML = "";
+    askPassword();
+  });
+
+  async function load(){
+    let raw;
+    try {
+      const r = await fetch("data.json?t=" + Date.now(), {cache:"no-store"});
+      if (!r.ok) throw new Error(r.status);
+      raw = await r.json();
+    } catch {
+      $("#scroller").innerHTML = `<div class="empty"><h2>還沒有資料</h2>
+        <ol><li>到 GitHub 專案的 Actions 分頁</li><li>點「更新股價資料」→ Run workflow</li><li>等 3～5 分鐘跑完後，按右上角 ↻ 重新載入</li></ol>
+        跑完還是空的，就點進那次執行紀錄看錯誤訊息。</div>`;
+      return;
+    }
+    if (!raw.enc) { show(raw); return; }
+    envelope = raw;
+    $("#lockNow").hidden = false;
+    const key = memKey?.salt === raw.salt ? memKey.key : await savedKey(raw);
+    if (key) {
+      try { const d = await decrypt(key, raw); memKey = {salt:raw.salt, key}; show(d); return; } catch {}
+    }
+    $("#scroller").innerHTML = "";
+    askPassword();
+  }
+
+  function show(payload){
+    data = payload;
+    if (!data.etfs[etf]) etf = Object.keys(data.etfs)[0];
+    const d = data.trade_date ? data.trade_date.replaceAll("-", "/") : "";
+    $("#stamp").textContent = d ? `${d} 收盤` : "";
+    renderTabs(); setMode(mode);
+  }
+  // ---------- 在 app 裡管理 ETF（透過 GitHub API）----------
+  const GH = "ghConn";
+  let job = null;   // {code, action, until, msg}
+  let pollTimer = null;
+  const utf8ToB64 = t => toB64(new TextEncoder().encode(t));
+  const b64ToUtf8 = t => new TextDecoder().decode(fromB64(t.replace(/\s/g, "")));
+
+  function guessRepo(){
+    const m = location.hostname.match(/^([^.]+)\.github\.io$/i);
+    if (!m) return "";
+    const seg = location.pathname.split("/").filter(Boolean)[0];
+    return `${m[1]}/${seg || location.hostname}`;
+  }
+  async function saveConn(repo, token){
+    const conn = {repo};
+    if (memKey) {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, memKey.key, new TextEncoder().encode(token));
+      Object.assign(conn, {salt:memKey.salt, iv:toB64(iv), ct:toB64(ct)});
+    } else conn.token = token;
+    store.set(GH, conn);
+  }
+  async function loadConn(){
+    const c = store.get(GH, null);
+    if (!c) return null;
+    if (c.token) return {repo:c.repo, token:c.token};
+    if (!memKey || c.salt !== memKey.salt) return {repo:c.repo, token:null};
+    try {
+      const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:fromB64(c.iv)}, memKey.key, fromB64(c.ct));
+      return {repo:c.repo, token:new TextDecoder().decode(pt)};
+    } catch { return {repo:c.repo, token:null}; }
+  }
+  async function gh(conn, path, opts = {}){
+    const r = await fetch(`https://api.github.com/repos/${conn.repo}${path}`, {
+      ...opts,
+      headers:{Accept:"application/vnd.github+json", Authorization:`Bearer ${conn.token}`,
+               "X-GitHub-Api-Version":"2022-11-28", ...(opts.body ? {"Content-Type":"application/json"} : {})}
+    });
+    if (!r.ok) {
+      const why = {401:"權杖無效或已過期。", 403:"權杖權限不足，請確認有 Contents 和 Actions 的讀寫權限。",
+                   404:"找不到專案，或權杖沒有這個專案的權限。", 409:"清單剛好有其他更新，請再試一次。",
+                   422:"找不到更新資料的工作流程（.github/workflows/update.yml）。"}[r.status];
+      throw new Error(why || `GitHub 回應錯誤（${r.status}）。`);
+    }
+    return r.status === 204 ? null : r.json();
+  }
+  async function readConfig(conn){
+    const f = await gh(conn, "/contents/config.json");
+    return {sha:f.sha, cfg:JSON.parse(b64ToUtf8(f.content))};
+  }
+  async function writeConfigAndRun(conn, cfg, sha, message){
+    await gh(conn, "/contents/config.json", {method:"PUT",
+      body:JSON.stringify({message, sha, content:utf8ToB64(JSON.stringify(cfg, null, 2) + "\n")})});
+    const info = await gh(conn, "");
+    await gh(conn, "/actions/workflows/update.yml/dispatches", {method:"POST",
+      body:JSON.stringify({ref:info.default_branch})});
+  }
+
+  function setStatus(msg, bad = false){ const el = $("#status"); el.textContent = msg; el.classList.toggle("bad", bad); }
+
+  async function openSheet(){
+    const conn = await loadConn();
+    if (!conn?.token) showGhForm(conn?.repo);
+    else { $("#ghForm").hidden = true; $("#manage").hidden = false; }
+    renderManage(conn);
+    setStatus(job ? job.msg : "");
+    $("#sheet").showModal();
+  }
+  function showGhForm(repo){
+    $("#manage").hidden = true; $("#ghForm").hidden = false;
+    $("#ghRepo").value = repo || guessRepo(); $("#ghToken").value = ""; $("#ghStatus").textContent = "";
+  }
+  function renderManage(conn){
+    $("#etfList").innerHTML = Object.entries(data?.etfs || {}).map(([c, e]) =>
+      `<li><b>${esc(c)}</b><span>${esc(e.name)}・${e.holdings.length} 檔</span><button class="txt-btn rm" data-rm="${esc(c)}">移除</button></li>`
+    ).join("") || `<li><span>還沒有 ETF</span></li>`;
+    $("#ghInfo").textContent = conn?.repo ? `已連線：${conn.repo}` : "尚未連線";
+  }
+
+  async function changeList(code, action){
+    const conn = await loadConn();
+    if (!conn?.token) { showGhForm(conn?.repo); return; }
+    $("#addBtn").disabled = true;
+    setStatus(action === "add" ? `正在加入 ${code}…` : `正在移除 ${code}…`);
+    try {
+      const {sha, cfg} = await readConfig(conn);
+      cfg.etfs = cfg.etfs || {};
+      if (action === "add") {
+        if (code in cfg.etfs) { setStatus(`${code} 已經在清單裡了。`); return; }
+        cfg.etfs[code] = "";
+      } else {
+        delete cfg.etfs[code];
+        if (cfg.manual_holdings) delete cfg.manual_holdings[code];
+      }
+      await writeConfigAndRun(conn, cfg, sha, `${action === "add" ? "加入" : "移除"} ETF ${code}`);
+      job = {code, action, until:Date.now() + 12 * 60e3,
+             msg:`${action === "add" ? "加入" : "移除"} ${code} 處理中，約 2～5 分鐘完成。`};
+      setStatus(job.msg); startPolling();
+      $("#newCode").value = "";
+    } catch (e) {
+      setStatus(e.message, true);
+    } finally { $("#addBtn").disabled = false; }
+  }
+  function startPolling(){
+    clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      if (!job) return clearInterval(pollTimer);
+      await load();
+      const has = !!data?.etfs?.[job.code];
+      if ((job.action === "add" && has) || (job.action === "remove" && !has)) {
+        const done = `${job.action === "add" ? "已加入" : "已移除"} ${job.code}。`;
+        if (job.action === "add") { etf = job.code; store.set("etf", etf); renderTabs(); }
+        job = null; clearInterval(pollTimer); render(); renderManage(await loadConn()); setStatus(done);
+      } else if (Date.now() > job.until) {
+        job = null; clearInterval(pollTimer); render();
+        setStatus("等太久了還沒完成，請到 GitHub 的 Actions 分頁看執行紀錄。", true);
+      }
+    }, 30e3);
+  }
+
+  $("#sheetClose").addEventListener("click", () => $("#sheet").close());
+  $("#sheet").addEventListener("click", ev => { if (ev.target === $("#sheet")) $("#sheet").close(); });
+  $("#addBtn").addEventListener("click", () => {
+    const code = $("#newCode").value.trim().toUpperCase();
+    if (!/^\d{4,6}[A-Z]?$/.test(code)) { setStatus("請輸入 ETF 代號，例如 00919 或 00981A。", true); return; }
+    changeList(code, "add");
+  });
+  $("#newCode").addEventListener("keydown", ev => { if (ev.key === "Enter") $("#addBtn").click(); });
+  $("#etfList").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-rm]"); if (!b) return;
+    if (confirm(`確定要移除 ${b.dataset.rm}？`)) changeList(b.dataset.rm, "remove");
+  });
+  $("#ghEdit").addEventListener("click", async () => showGhForm((await loadConn())?.repo));
+  $("#ghCancel").addEventListener("click", async () => {
+    const conn = await loadConn();
+    if (conn?.token) { $("#ghForm").hidden = true; $("#manage").hidden = false; } else $("#sheet").close();
+  });
+  $("#ghForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const conn = {repo:$("#ghRepo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, ""),
+                  token:$("#ghToken").value.trim()};
+    const st = $("#ghStatus"); st.classList.remove("bad"); st.textContent = "測試連線中…";
+    $("#ghSave").disabled = true;
+    try {
+      await readConfig(conn);
+      await saveConn(conn.repo, conn.token);
+      $("#ghForm").hidden = true; $("#manage").hidden = false;
+      renderManage(conn); setStatus("連線成功，可以開始新增 ETF 了。");
+    } catch (e) { st.textContent = e.message; st.classList.add("bad"); }
+    finally { $("#ghSave").disabled = false; }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

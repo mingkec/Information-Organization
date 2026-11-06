@@ -1,0 +1,12 @@
+{
+  "name": "ETF 成分股看板",
+  "short_name": "ETF看板",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1A2B5E",
+  "theme_color": "#1A2B5E",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
