@@ -327,7 +327,7 @@ dialog.sheet::backdrop{background:rgba(5,10,25,.5)}
       `<span>法人目標空間<strong class="${dir(wup)}">${pct(wup)}</strong></span>`;
 
     const notes = [];
-    if (e.source && /Basic0007\./i.test(e.source)) notes.push("目前只抓到前十大持股。可在 config.json 的 manual_holdings 填入完整名單。");
+    if (e.source && /basic0007\.xdjhtm/i.test(e.source)) notes.push("目前只抓到前十大持股。可在 config.json 的 manual_holdings 填入完整名單。");
     if (all.some(r => r.stale)) notes.push("部分個股今天沒抓到新資料，顯示的是上次的數字。");
     if (job) notes.unshift(job.msg);
     $("#note").textContent = notes.join(" ");

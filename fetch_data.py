@@ -153,17 +153,29 @@ def parse_holdings(html):
 
 
 def holdings_from_moneydj(etf):
+    """先抓「全部持股」，失敗才用「前十大」。
+
+    MoneyDJ 只有全小寫的網址會正確顯示台股 ETF；大寫網址可能被轉到別檔 ETF，
+    所以每次都確認頁面標題真的是我們要的那一檔。
+    """
+    e = etf.lower()
     urls = [
-        f"https://www.moneydj.com/ETF/X/Basic/Basic0007B.xdjhtm?etfid={etf}.TW",  # 全部持股
-        f"https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid={etf}.TW",   # 前十大
+        f"https://www.moneydj.com/etf/x/basic/basic0007b.xdjhtm?etfid={e}.tw",   # 全部持股
+        f"https://www.moneydj.com/ETF/X/Basic/Basic0007B.xdjhtm?etfid={etf}.TW",
+        f"https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid={e}.tw",    # 前十大
     ]
     for url in urls:
         html = get(url, kind="text", tries=2)
-        rows = parse_holdings(html) if html else []
+        time.sleep(1)
+        if not html:
+            continue
+        if f"{etf.upper()}.TW" not in html.upper():
+            log(f"  ! {url} 被轉到別的頁面，略過")
+            continue
+        rows = parse_holdings(html)
         if rows:
             return rows, url
         log(f"  ! {url} 沒有找到持股表")
-        time.sleep(1)
     return [], None
 
 
